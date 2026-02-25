@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}이력 상세 #{{ detail.id }}{% endblock %}
+{% block content %}
+<h2 class="page-title">이력 상세 #{{ detail.id }}</h2>
+
+<div class="section">
+    <div class="section-title">원본 쿼리</div>
+    <textarea readonly>{{ detail.original_query }}</textarea>
+</div>
+
+<div class="section">
+    <div class="section-title">마스킹된 쿼리</div>
+    <div class="copy-wrap">
+        <textarea readonly id="masked-query">{{ detail.encrypted_query }}</textarea>
+        <button class="copy-btn" onclick="copyText('masked-query')">복사</button>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">치환 매핑</div>
+    <table class="mapping-table">
+        <thead><tr><th>별칭</th><th>원본</th></tr></thead>
+        <tbody>
+        {% for alias, original in detail.mapping.items() %}
+            <tr><td><code>{{ alias }}</code></td><td><code>{{ original }}</code></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if detail.restored_query %}
+<div class="section">
+    <div class="section-title">복원된 쿼리</div>
+    <div class="copy-wrap">
+        <textarea readonly id="restored-query">{{ detail.restored_query }}</textarea>
+        <button class="copy-btn" onclick="copyText('restored-query')">복사</button>
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+        복원 일시: {{ detail.restored_at[:19] | replace("T", " ") }}
+    </p>
+</div>
+{% else %}
+<div class="section">
+    <div class="section-title">복원</div>
+    <form method="post" action="/query-mask/decrypt">
+        <input type="hidden" name="history_id" value="{{ detail.id }}">
+        <textarea name="modified_query" placeholder="외부 LLM이 개선한 마스킹 쿼리를 여기에 붙여넣으세요..."></textarea>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-success">원본으로 복원</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="btn-group">
+    <a href="/query-mask/history" class="btn btn-secondary">목록으로</a>
+    <a href="/query-mask" class="btn btn-primary">새 쿼리 마스킹</a>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyText(id) {
+    const el = document.getElementById(id);
+    el.select();
+    document.execCommand('copy');
+    const btn = el.parentElement.querySelector('.copy-btn');
+    btn.textContent = '복사됨!';
+    setTimeout(() => btn.textContent = '복사', 1500);
+}
+</script>
+{% endblock %}

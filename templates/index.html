@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Work Helper - 대시보드{% endblock %}
+{% block content %}
+<h2 class="page-title">도구 모음</h2>
+<div class="card-grid">
+    {% for f in features %}
+    <a href="{{ f.url }}" class="card">
+        <span class="icon">{{ f.icon }}</span>
+        <span class="title">{{ f.title }}</span>
+        <span class="desc">{{ f.description }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

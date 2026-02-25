@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}마스킹 이력{% endblock %}
+{% block content %}
+<h2 class="page-title">마스킹 이력</h2>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="section">
+    {% if rows %}
+    <table class="history-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>쿼리 미리보기</th>
+                <th>마스킹 일시</th>
+                <th>복원 여부</th>
+                <th>상세</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.preview }}{% if row.preview|length >= 80 %}…{% endif %}</td>
+                <td>{{ row.created_at[:19] | replace("T", " ") }}</td>
+                <td>
+                    {% if row.restored_at %}
+                        <span class="badge badge-done">복원완료</span>
+                    {% else %}
+                        <span class="badge badge-pending">대기중</span>
+                    {% endif %}
+                </td>
+                <td><a href="/query-mask/history/{{ row.id }}">보기</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--text-muted); text-align:center; padding:32px 0;">아직 이력이 없습니다.</p>
+    {% endif %}
+</div>
+{% endblock %}
