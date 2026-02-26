@@ -1,0 +1,12 @@
+# 사용자 데이터 (쿼리 이력, 토큰 등)
+work_helper.db
+projects.json
+
+# Git Sync 관련
+archive/
+temp_*.zip
+temp_extract_*/
+
+# Python
+__pycache__/
+*.pyc
