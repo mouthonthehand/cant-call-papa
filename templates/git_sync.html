@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Work Helper - Git 저장소 동기화{% endblock %}
+{% block content %}
+<h2 class="page-title">Git 저장소 동기화</h2>
+
+<!-- 프로젝트 등록 폼 -->
+<div class="section">
+    <div class="section-title">새 프로젝트 등록</div>
+    <div class="sync-form-row">
+        <input type="text" id="p_id" class="sync-input" placeholder="ID (영문, 예: my_proj)">
+        <input type="text" id="p_name" class="sync-input" placeholder="표시될 이름">
+        <input type="text" id="p_url" class="sync-input" placeholder="Git API ZIP URL">
+    </div>
+    <div class="sync-form-row">
+        <input type="text" id="p_target" class="sync-input" placeholder="로컬 저장 경로 (예: ./workspace/my_proj)">
+        <input type="password" id="p_token" class="sync-input" placeholder="API Token (Private 레포인 경우)">
+        <button class="btn btn-primary" onclick="addProject()">등록하기</button>
+    </div>
+</div>
+
+<!-- 프로젝트 목록 -->
+<div id="projectList" class="sync-project-list">
+    <p class="sync-empty">등록된 프로젝트가 없습니다.</p>
+</div>
+
+<!-- 로그 패널 -->
+<div class="sync-log-panel" id="logPanel">
+    <div class="log-info">> 시스템 대기 중...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const projectListEl = document.getElementById('projectList');
+    const logPanelEl = document.getElementById('logPanel');
+
+    function addLog(message, type) {
+        const time = new Date().toLocaleTimeString();
+        const div = document.createElement('div');
+        div.className = 'log-' + type;
+        div.textContent = '[' + time + '] ' + message;
+        logPanelEl.appendChild(div);
+        logPanelEl.scrollTop = logPanelEl.scrollHeight;
+    }
+
+    async function fetchProjects() {
+        try {
+            const response = await fetch('/api/projects');
+            const data = await response.json();
+
+            projectListEl.innerHTML = '';
+
+            if (data.length === 0) {
+                projectListEl.innerHTML = '<p class="sync-empty">등록된 프로젝트가 없습니다. 위에서 등록해주세요.</p>';
+                return;
+            }
+
+            data.forEach(function(project) {
+                const card = document.createElement('div');
+                card.className = 'sync-card';
+                card.innerHTML =
+                    '<div class="sync-card-info">' +
+                        '<div class="sync-card-name">' + project.name + ' <span class="sync-card-id">(' + project.id + ')</span></div>' +
+                        '<div class="sync-card-detail">URL: ' + project.repo_url + '</div>' +
+                        '<div class="sync-card-detail">\uACBD\uB85C: ' + project.target + '</div>' +
+                    '</div>' +
+                    '<div class="sync-card-actions">' +
+                        '<button class="btn btn-success" id="btn-' + project.id + '" onclick="updateProject(\'' + project.id + '\')">\uC5C5\uB370\uC774\uD2B8</button>' +
+                        '<button class="btn btn-danger" onclick="deleteProject(\'' + project.id + '\')">\uC0AD\uC81C</button>' +
+                    '</div>';
+                projectListEl.appendChild(card);
+            });
+        } catch (error) {
+            addLog('\uD504\uB85C\uC81D\uD2B8 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uB294\uB370 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+        }
+    }
+
+    async function addProject() {
+        const id = document.getElementById('p_id').value;
+        const name = document.getElementById('p_name').value;
+        const url = document.getElementById('p_url').value;
+        const target = document.getElementById('p_target').value;
+        const token = document.getElementById('p_token').value;
+
+        if (!id || !name || !url || !target) {
+            alert('API Token\uC744 \uC81C\uC678\uD55C \uBAA8\uB4E0 \uD56D\uBAA9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, name: name, repo_url: url, target_folder: target, token: token })
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                addLog(result.message, 'success');
+                document.getElementById('p_id').value = '';
+                document.getElementById('p_name').value = '';
+                document.getElementById('p_url').value = '';
+                document.getElementById('p_target').value = '';
+                document.getElementById('p_token').value = '';
+                fetchProjects();
+            } else {
+                addLog('\uB4F1\uB85D \uC2E4\uD328: ' + result.detail, 'error');
+            }
+        } catch (error) {
+            addLog('\uC11C\uBC84 \uD1B5\uC2E0 \uC624\uB958: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteProject(projectId) {
+        if (!confirm('\uC815\uB9D0\uB85C \'' + projectId + '\' \uD504\uB85C\uC81D\uD2B8\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C? (\uB85C\uCEEC \uD30C\uC77C\uC740 \uC0AD\uC81C\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4)')) return;
+
+        try {
+            const response = await fetch('/api/projects/' + projectId, { method: 'DELETE' });
+            if (response.ok) {
+                addLog('\'' + projectId + '\' \uD504\uB85C\uC81D\uD2B8\uAC00 \uBAA9\uB85D\uC5D0\uC11C \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+                fetchProjects();
+            }
+        } catch (error) {
+            addLog('\uC0AD\uC81C \uC2E4\uD328: ' + error.message, 'error');
+        }
+    }
+
+    async function updateProject(projectId) {
+        const btn = document.getElementById('btn-' + projectId);
+        btn.disabled = true;
+        btn.innerText = '\uC9C4\uD589 \uC911...';
+        addLog('\'' + projectId + '\' \uC5C5\uB370\uC774\uD2B8 \uC2DC\uC791...', 'info');
+
+        try {
+            const response = await fetch('/api/update/' + projectId, { method: 'POST' });
+            const result = await response.json();
+
+            if (response.ok) {
+                addLog(result.message, 'success');
+            } else {
+                addLog('\uC5C5\uB370\uC774\uD2B8 \uC2E4\uD328: ' + result.detail, 'error');
+            }
+        } catch (error) {
+            addLog('\uC11C\uBC84 \uD1B5\uC2E0 \uC624\uB958: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerText = '\uC5C5\uB370\uC774\uD2B8';
+        }
+    }
+
+    window.onload = fetchProjects;
+</script>
+{% endblock %}

@@ -1,11 +1,13 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 import os
 
 from database import init_db, save_encryption, save_restoration, get_history_list, get_history_detail
 from query_masker import mask_query, unmask_query
+from project_manager import load_projects, add_project, delete_project, sync_project
 
 app = FastAPI(title="Work Helper")
 
@@ -30,7 +32,22 @@ FEATURES = [
         "url": "/query-mask/history",
         "icon": "📋",
     },
+    {
+        "title": "Git 저장소 동기화",
+        "description": "사내 Git 저장소를 로컬 폴더와 동기화하고, 변경 전 파일을 자동 백업합니다.",
+        "url": "/git-sync",
+        "icon": "🔄",
+    },
 ]
+
+
+# ─── Git Sync 모델 ────────────────────────────────────────
+class ProjectCreate(BaseModel):
+    id: str
+    name: str
+    repo_url: str
+    target_folder: str
+    token: str = ""
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -96,6 +113,50 @@ async def history_detail(request: Request, history_id: int):
             "error": "해당 이력을 찾을 수 없습니다.",
         })
     return templates.TemplateResponse("history_detail.html", {"request": request, "detail": detail})
+
+
+# ─── Git 저장소 동기화 ─────────────────────────────────────
+@app.get("/git-sync", response_class=HTMLResponse)
+async def git_sync_page(request: Request):
+    return templates.TemplateResponse("git_sync.html", {"request": request})
+
+
+@app.get("/api/projects")
+async def get_projects_api():
+    projects = load_projects()
+    return [
+        {"id": key, "name": val["name"], "repo_url": val["repo_url"], "target": val["target_folder"]}
+        for key, val in projects.items()
+    ]
+
+
+@app.post("/api/projects")
+async def add_project_api(project: ProjectCreate):
+    try:
+        add_project(project.id, project.name, project.repo_url, project.target_folder, project.token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": f"'{project.name}' 프로젝트가 추가되었습니다."}
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project_api(project_id: str):
+    try:
+        delete_project(project_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"message": "프로젝트가 삭제되었습니다."}
+
+
+@app.post("/api/update/{project_id}")
+async def update_project_api(project_id: str):
+    try:
+        msg = sync_project(project_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": msg}
 
 
 if __name__ == "__main__":

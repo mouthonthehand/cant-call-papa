@@ -261,9 +261,101 @@ textarea[readonly] { background: #f0f0f0; cursor: default; }
 }
 .copy-btn:hover { opacity: 1; }
 
+/* ── Git Sync 폼 ── */
+.sync-form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.sync-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    background: #fafafa;
+}
+.sync-input:focus { border-color: var(--accent); }
+
+/* ── Git Sync 프로젝트 카드 ── */
+.sync-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.sync-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow);
+    gap: 16px;
+}
+.sync-card-info { flex: 1; min-width: 0; }
+.sync-card-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+.sync-card-id {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.sync-card-detail {
+    font-size: 13px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sync-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.sync-empty {
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 12px 0;
+}
+
+/* ── 버튼 추가 ── */
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #c0392b; }
+.btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+/* ── 로그 패널 ── */
+.sync-log-panel {
+    background: #1a202c;
+    color: #a0aec0;
+    border-radius: var(--radius);
+    padding: 20px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    height: 250px;
+    overflow-y: auto;
+}
+.sync-log-panel .log-success { color: #68d391; }
+.sync-log-panel .log-error { color: #fc8181; }
+.sync-log-panel .log-info { color: #63b3ed; }
+
 /* ── 반응형 ── */
 @media (max-width: 600px) {
     .container { padding: 16px 12px; }
     .card-grid { grid-template-columns: 1fr; }
     .section { padding: 20px 16px; }
+    .sync-card { flex-direction: column; align-items: flex-start; }
+    .sync-card-actions { width: 100%; }
 }
