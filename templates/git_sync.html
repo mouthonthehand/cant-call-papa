@@ -3,13 +3,28 @@
 {% block content %}
 <h2 class="page-title">Git 저장소 동기화</h2>
 
+<!-- 프록시 설정 (접기/펼치기) -->
+<div class="section">
+    <div class="section-title section-toggle" onclick="toggleProxy()">
+        <span id="proxyArrow">&#9654;</span> 프록시 설정
+        <span class="section-subtitle">사내망 프록시가 있는 경우 설정하세요</span>
+    </div>
+    <div id="proxyPanel" class="proxy-panel" style="display:none;">
+        <div class="sync-form-row">
+            <input type="text" id="proxy_http" class="sync-input" placeholder="HTTP 프록시 (예: http://proxy.company.com:8080)">
+            <input type="text" id="proxy_https" class="sync-input" placeholder="HTTPS 프록시 (예: http://proxy.company.com:8080)">
+            <button class="btn btn-primary" onclick="saveProxy()">저장</button>
+        </div>
+    </div>
+</div>
+
 <!-- 프로젝트 등록 폼 -->
 <div class="section">
     <div class="section-title">새 프로젝트 등록</div>
     <div class="sync-form-row">
         <input type="text" id="p_id" class="sync-input" placeholder="ID (영문, 예: my_proj)">
         <input type="text" id="p_name" class="sync-input" placeholder="표시될 이름">
-        <input type="text" id="p_url" class="sync-input" placeholder="Git API ZIP URL">
+        <input type="text" id="p_url" class="sync-input" placeholder="Git ZIP URL (선택 - ZIP 직접 업로드 시 비워두기 가능)">
     </div>
     <div class="sync-form-row">
         <input type="text" id="p_target" class="sync-input" placeholder="로컬 저장 경로 (예: ./workspace/my_proj)">
@@ -23,6 +38,9 @@
     <p class="sync-empty">등록된 프로젝트가 없습니다.</p>
 </div>
 
+<!-- ZIP 업로드 (숨김 input) -->
+<input type="file" id="zipFileInput" accept=".zip" style="display:none;" onchange="handleZipUpload()">
+
 <!-- 로그 패널 -->
 <div class="sync-log-panel" id="logPanel">
     <div class="log-info">> 시스템 대기 중...</div>
@@ -34,6 +52,7 @@
 <script>
     const projectListEl = document.getElementById('projectList');
     const logPanelEl = document.getElementById('logPanel');
+    let uploadTargetId = null;
 
     function addLog(message, type) {
         const time = new Date().toLocaleTimeString();
@@ -44,6 +63,46 @@
         logPanelEl.scrollTop = logPanelEl.scrollHeight;
     }
 
+    // ─── 프록시 ──────────────────────────────────
+    function toggleProxy() {
+        const panel = document.getElementById('proxyPanel');
+        const arrow = document.getElementById('proxyArrow');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            arrow.innerHTML = '&#9660;';
+            loadProxy();
+        } else {
+            panel.style.display = 'none';
+            arrow.innerHTML = '&#9654;';
+        }
+    }
+
+    async function loadProxy() {
+        try {
+            const res = await fetch('/api/proxy');
+            const data = await res.json();
+            document.getElementById('proxy_http').value = data.http || '';
+            document.getElementById('proxy_https').value = data.https || '';
+        } catch (e) {}
+    }
+
+    async function saveProxy() {
+        const http = document.getElementById('proxy_http').value;
+        const https = document.getElementById('proxy_https').value;
+        try {
+            const res = await fetch('/api/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ http: http, https: https })
+            });
+            const result = await res.json();
+            addLog(result.message, 'success');
+        } catch (e) {
+            addLog('\uD504\uB85D\uC2DC \uC800\uC7A5 \uC2E4\uD328: ' + e.message, 'error');
+        }
+    }
+
+    // ─── 프로젝트 목록 ──────────────────────────
     async function fetchProjects() {
         try {
             const response = await fetch('/api/projects');
@@ -52,21 +111,31 @@
             projectListEl.innerHTML = '';
 
             if (data.length === 0) {
-                projectListEl.innerHTML = '<p class="sync-empty">등록된 프로젝트가 없습니다. 위에서 등록해주세요.</p>';
+                projectListEl.innerHTML = '<p class="sync-empty">\uB4F1\uB85D\uB41C \uD504\uB85C\uC81D\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC704\uC5D0\uC11C \uB4F1\uB85D\uD574\uC8FC\uC138\uC694.</p>';
                 return;
             }
 
             data.forEach(function(project) {
                 const card = document.createElement('div');
                 card.className = 'sync-card';
+
+                var urlLine = project.repo_url
+                    ? '<div class="sync-card-detail">URL: ' + project.repo_url + '</div>'
+                    : '<div class="sync-card-detail">URL: (ZIP \uC9C1\uC811 \uC5C5\uB85C\uB4DC \uC804\uC6A9)</div>';
+
+                var updateBtn = project.repo_url
+                    ? '<button class="btn btn-success" id="btn-' + project.id + '" onclick="updateProject(\'' + project.id + '\')">\uC5C5\uB370\uC774\uD2B8</button>'
+                    : '';
+
                 card.innerHTML =
                     '<div class="sync-card-info">' +
                         '<div class="sync-card-name">' + project.name + ' <span class="sync-card-id">(' + project.id + ')</span></div>' +
-                        '<div class="sync-card-detail">URL: ' + project.repo_url + '</div>' +
+                        urlLine +
                         '<div class="sync-card-detail">\uACBD\uB85C: ' + project.target + '</div>' +
                     '</div>' +
                     '<div class="sync-card-actions">' +
-                        '<button class="btn btn-success" id="btn-' + project.id + '" onclick="updateProject(\'' + project.id + '\')">\uC5C5\uB370\uC774\uD2B8</button>' +
+                        updateBtn +
+                        '<button class="btn btn-primary" onclick="triggerUpload(\'' + project.id + '\')">ZIP \uC5C5\uB85C\uB4DC</button>' +
                         '<button class="btn btn-danger" onclick="deleteProject(\'' + project.id + '\')">\uC0AD\uC81C</button>' +
                     '</div>';
                 projectListEl.appendChild(card);
@@ -76,6 +145,7 @@
         }
     }
 
+    // ─── 프로젝트 등록 ──────────────────────────
     async function addProject() {
         const id = document.getElementById('p_id').value;
         const name = document.getElementById('p_name').value;
@@ -83,8 +153,8 @@
         const target = document.getElementById('p_target').value;
         const token = document.getElementById('p_token').value;
 
-        if (!id || !name || !url || !target) {
-            alert('API Token\uC744 \uC81C\uC678\uD55C \uBAA8\uB4E0 \uD56D\uBAA9\uC744 \uC785\uB825\uD574\uC8FC\uC138\uC694.');
+        if (!id || !name || !target) {
+            alert('ID, \uC774\uB984, \uB85C\uCEEC \uACBD\uB85C\uB294 \uD544\uC218\uC785\uB2C8\uB2E4.');
             return;
         }
 
@@ -112,6 +182,7 @@
         }
     }
 
+    // ─── 삭제 ────────────────────────────────────
     async function deleteProject(projectId) {
         if (!confirm('\uC815\uB9D0\uB85C \'' + projectId + '\' \uD504\uB85C\uC81D\uD2B8\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C? (\uB85C\uCEEC \uD30C\uC77C\uC740 \uC0AD\uC81C\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4)')) return;
 
@@ -126,11 +197,12 @@
         }
     }
 
+    // ─── URL 업데이트 ────────────────────────────
     async function updateProject(projectId) {
         const btn = document.getElementById('btn-' + projectId);
         btn.disabled = true;
         btn.innerText = '\uC9C4\uD589 \uC911...';
-        addLog('\'' + projectId + '\' \uC5C5\uB370\uC774\uD2B8 \uC2DC\uC791...', 'info');
+        addLog('\'' + projectId + '\' URL \uC5C5\uB370\uC774\uD2B8 \uC2DC\uC791...', 'info');
 
         try {
             const response = await fetch('/api/update/' + projectId, { method: 'POST' });
@@ -147,6 +219,43 @@
             btn.disabled = false;
             btn.innerText = '\uC5C5\uB370\uC774\uD2B8';
         }
+    }
+
+    // ─── ZIP 파일 업로드 ─────────────────────────
+    function triggerUpload(projectId) {
+        uploadTargetId = projectId;
+        const input = document.getElementById('zipFileInput');
+        input.value = '';
+        input.click();
+    }
+
+    async function handleZipUpload() {
+        const input = document.getElementById('zipFileInput');
+        if (!input.files.length || !uploadTargetId) return;
+
+        const file = input.files[0];
+        addLog('\'' + uploadTargetId + '\' ZIP \uC5C5\uB85C\uB4DC \uC2DC\uC791: ' + file.name, 'info');
+
+        const formData = new FormData();
+        formData.append('zip_file', file);
+
+        try {
+            const response = await fetch('/api/upload/' + uploadTargetId, {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (response.ok) {
+                addLog(result.message, 'success');
+            } else {
+                addLog('ZIP \uC5C5\uB85C\uB4DC \uC2E4\uD328: ' + result.detail, 'error');
+            }
+        } catch (error) {
+            addLog('\uC11C\uBC84 \uD1B5\uC2E0 \uC624\uB958: ' + error.message, 'error');
+        }
+
+        uploadTargetId = null;
     }
 
     window.onload = fetchProjects;

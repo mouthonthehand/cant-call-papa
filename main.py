@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -7,7 +7,11 @@ import os
 
 from database import init_db, save_encryption, save_restoration, get_history_list, get_history_detail
 from query_masker import mask_query, unmask_query
-from project_manager import load_projects, add_project, delete_project, sync_project
+from project_manager import (
+    load_projects, add_project, delete_project,
+    sync_project, sync_project_from_file,
+    load_proxy, save_proxy,
+)
 
 app = FastAPI(title="Work Helper")
 
@@ -157,6 +161,33 @@ async def update_project_api(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"message": msg}
+
+
+@app.post("/api/upload/{project_id}")
+async def upload_sync_api(project_id: str, zip_file: UploadFile = File(...)):
+    if not zip_file.filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="ZIP 파일만 업로드 가능합니다.")
+    try:
+        file_bytes = await zip_file.read()
+        msg = sync_project_from_file(project_id, file_bytes)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": msg}
+
+
+# ─── 프록시 설정 ──────────────────────────────────────────
+@app.get("/api/proxy")
+async def get_proxy_api():
+    return load_proxy()
+
+
+@app.post("/api/proxy")
+async def set_proxy_api(request: Request):
+    body = await request.json()
+    save_proxy(body.get("http", ""), body.get("https", ""))
+    return {"message": "프록시 설정이 저장되었습니다."}
 
 
 if __name__ == "__main__":

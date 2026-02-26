@@ -261,6 +261,24 @@ textarea[readonly] { background: #f0f0f0; cursor: default; }
 }
 .copy-btn:hover { opacity: 1; }
 
+/* ── 프록시 설정 패널 ── */
+.section-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+.section-toggle:hover { color: var(--accent); }
+.section-subtitle {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+.proxy-panel {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
 /* ── Git Sync 폼 ── */
 .sync-form-row {
     display: flex;

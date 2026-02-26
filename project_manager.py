@@ -12,9 +12,35 @@ from datetime import datetime
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_FILE = os.path.join(BASE_DIR, "projects.json")
+PROXY_FILE = os.path.join(BASE_DIR, "proxy_config.json")
 ARCHIVE_ROOT = os.path.join(BASE_DIR, "archive")
 
 
+# ─── 프록시 설정 ──────────────────────────────────────────
+def load_proxy() -> dict:
+    if os.path.exists(PROXY_FILE):
+        with open(PROXY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"http": "", "https": ""}
+
+
+def save_proxy(http_proxy: str, https_proxy: str):
+    with open(PROXY_FILE, "w", encoding="utf-8") as f:
+        json.dump({"http": http_proxy, "https": https_proxy}, f, indent=4)
+
+
+def _get_proxies() -> dict | None:
+    """requests용 프록시 딕셔너리. 설정이 없으면 None."""
+    cfg = load_proxy()
+    proxies = {}
+    if cfg.get("http"):
+        proxies["http"] = cfg["http"]
+    if cfg.get("https"):
+        proxies["https"] = cfg["https"]
+    return proxies if proxies else None
+
+
+# ─── 프로젝트 CRUD ────────────────────────────────────────
 def load_projects() -> dict:
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -51,6 +77,7 @@ def delete_project(project_id: str):
     save_projects(projects)
 
 
+# ─── 파일 비교 & 동기화 공통 로직 ──────────────────────────
 def get_all_relative_files(directory: str) -> list[str]:
     file_paths = []
     if not os.path.exists(directory):
@@ -63,8 +90,8 @@ def get_all_relative_files(directory: str) -> list[str]:
     return file_paths
 
 
-def sync_project(project_id: str) -> str:
-    """프로젝트를 Git 저장소와 동기화한다. 결과 메시지를 반환."""
+def _sync_from_zip(project_id: str, zip_path: str) -> str:
+    """ZIP 파일로부터 프로젝트를 동기화한다. 공통 로직."""
     projects = load_projects()
     if project_id not in projects:
         raise KeyError("프로젝트를 찾을 수 없습니다.")
@@ -72,35 +99,27 @@ def sync_project(project_id: str) -> str:
     config = projects[project_id]
     project_name = config["name"]
     target_folder = config["target_folder"]
-    repo_url = config["repo_url"]
-    token = config.get("token", "")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     archive_folder = os.path.join(ARCHIVE_ROOT, project_id, timestamp)
-    temp_zip = os.path.join(BASE_DIR, f"temp_{project_id}.zip")
     temp_extract = os.path.join(BASE_DIR, f"temp_extract_{project_id}")
 
     try:
-        # 1. 파일 다운로드
-        headers = {"Authorization": f"token {token}"} if token else {}
-        response = requests.get(repo_url, headers=headers, timeout=60)
-
-        if response.status_code != 200:
-            raise Exception(f"API 호출 실패 (상태 코드: {response.status_code}) - URL이나 토큰을 확인하세요.")
-
-        with open(temp_zip, "wb") as f:
-            f.write(response.content)
-
-        # 2. 압축 해제
-        shutil.unpack_archive(temp_zip, temp_extract)
+        # 1. 압축 해제
+        shutil.unpack_archive(zip_path, temp_extract)
         extracted_items = os.listdir(temp_extract)
         if not extracted_items:
-            raise Exception("다운로드된 압축 파일이 비어있습니다.")
+            raise Exception("압축 파일이 비어있습니다.")
 
-        wrapper_folder = os.path.join(temp_extract, extracted_items[0])
+        # ZIP 안에 래퍼 폴더가 있으면 그 안으로 진입
+        wrapper = os.path.join(temp_extract, extracted_items[0])
+        if os.path.isdir(wrapper) and len(extracted_items) == 1:
+            source_folder = wrapper
+        else:
+            source_folder = temp_extract
 
-        # 3. 변경점 비교
-        new_files = get_all_relative_files(wrapper_folder)
+        # 2. 변경점 비교
+        new_files = get_all_relative_files(source_folder)
         old_files = get_all_relative_files(target_folder)
 
         new_files_set = set(new_files)
@@ -109,7 +128,7 @@ def sync_project(project_id: str) -> str:
         to_archive, to_copy, to_delete = [], [], []
 
         for rel_path in new_files_set:
-            src_path = os.path.join(wrapper_folder, rel_path)
+            src_path = os.path.join(source_folder, rel_path)
             dst_path = os.path.join(target_folder, rel_path)
 
             if rel_path not in old_files_set:
@@ -124,7 +143,7 @@ def sync_project(project_id: str) -> str:
                 to_archive.append(rel_path)
                 to_delete.append(rel_path)
 
-        # 4. 파일 작업 실행
+        # 3. 파일 작업 실행
         if not to_copy and not to_delete:
             return f"[{project_name}] 최신 상태입니다. (변경된 파일 없음)"
 
@@ -140,7 +159,7 @@ def sync_project(project_id: str) -> str:
             os.remove(target_file)
 
         for rel_path in to_copy:
-            src_file = os.path.join(wrapper_folder, rel_path)
+            src_file = os.path.join(source_folder, rel_path)
             dst_file = os.path.join(target_folder, rel_path)
             os.makedirs(os.path.dirname(dst_file), exist_ok=True)
             shutil.copy2(src_file, dst_file)
@@ -148,8 +167,50 @@ def sync_project(project_id: str) -> str:
         return f"[{project_name}] 동기화 완료. (변경: {len(to_copy)}건, 삭제: {len(to_delete)}건 | 백업: {archive_folder})"
 
     finally:
-        # 5. 임시 파일 정리
-        if os.path.exists(temp_zip):
-            os.remove(temp_zip)
         if os.path.exists(temp_extract):
             shutil.rmtree(temp_extract)
+
+
+def sync_project(project_id: str) -> str:
+    """URL에서 ZIP을 다운로드하여 동기화한다. (프록시 설정 반영)"""
+    projects = load_projects()
+    if project_id not in projects:
+        raise KeyError("프로젝트를 찾을 수 없습니다.")
+
+    config = projects[project_id]
+    repo_url = config["repo_url"]
+    token = config.get("token", "")
+
+    temp_zip = os.path.join(BASE_DIR, f"temp_{project_id}.zip")
+
+    try:
+        headers = {"Authorization": f"token {token}"} if token else {}
+        proxies = _get_proxies()
+        response = requests.get(repo_url, headers=headers, proxies=proxies, timeout=120)
+
+        if response.status_code != 200:
+            raise Exception(f"다운로드 실패 (상태 코드: {response.status_code}) - URL, 토큰, 또는 프록시 설정을 확인하세요.")
+
+        with open(temp_zip, "wb") as f:
+            f.write(response.content)
+
+        return _sync_from_zip(project_id, temp_zip)
+
+    finally:
+        if os.path.exists(temp_zip):
+            os.remove(temp_zip)
+
+
+def sync_project_from_file(project_id: str, file_bytes: bytes) -> str:
+    """업로드된 ZIP 파일로 동기화한다. (네트워크 불필요)"""
+    temp_zip = os.path.join(BASE_DIR, f"temp_{project_id}.zip")
+
+    try:
+        with open(temp_zip, "wb") as f:
+            f.write(file_bytes)
+
+        return _sync_from_zip(project_id, temp_zip)
+
+    finally:
+        if os.path.exists(temp_zip):
+            os.remove(temp_zip)
